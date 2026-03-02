@@ -14,53 +14,38 @@
     .input-area { padding: 15px; background: #0d2330; display: flex; gap: 10px; border-top: 1px solid #a8d8ea22; }
     input { flex: 1; padding: 12px; border-radius: 10px; border: 1px solid #a8d8ea44; background: #080f14; color: white; outline: none; }
     button { padding: 10px 22px; border-radius: 10px; border: none; background: #6bb8d4; color: #080f14; font-weight: bold; cursor: pointer; }
-    .hidden { display: none !important; }
     #error-msg { color: #ff6b6b; font-size: 13px; text-align: center; padding: 10px; background: rgba(255,107,107,0.1); margin: 10px; border-radius: 8px; }
+    .hidden { display: none !important; }
     a { color: #6bb8d4; text-decoration: underline; }
   </style>
 </head>
 <body>
   <header>MEN ZONE</header>
-  <div id="setup" style="padding: 50px 20px; text-align: center;">
-    <h3 style="color:#a8d8ea">הפעלת העוזר הדיגיטלי</h3>
-    <input type="password" id="key" placeholder="sk-ant-api03-..." style="width: 100%; max-width: 320px; margin-bottom: 15px; padding: 10px;">
-    <br><button onclick="start()">הפעל את הבוט</button>
-  </div>
-  <div id="chat" class="hidden"></div>
+  <div id="chat"></div>
   <div id="error-msg" class="hidden"></div>
-  <div id="input" class="input-area hidden">
+  <div class="input-area">
     <input type="text" id="userInput" placeholder="כתוב הודעה..." onkeypress="if(event.key==='Enter') send()">
     <button id="sendBtn" onclick="send()">שלח</button>
   </div>
 <script>
-  const SYSTEM = `אתה העוזר של Men Zone, קליניקה להסרת שיער בלייזר לגברים בראש העין (יהושע בן נון 60). שעות פעילות: א'-ה' 18:00-22:00. סגור בשבת. טכנולוגיה: Photon Ice Gold. חוקים: ענה בעברית בלבד, קצר ולעניין. ללא אמפתיה. אל תבטיח תוצאות מהטיפול הראשון. השתמש במושגים "טיפול מסור" ו"תמיד לקראתך". שאלות על מחיר או מבצעים: הפנה לוואטסאפ https://wa.me/972555633598. לקביעת תור: https://lee.co.il/b/C0ucE?tab=meetings`;
-  let apiKey = ''; let history = [];
-  function start() {
-    apiKey = document.getElementById('key').value.trim();
-    if(apiKey.startsWith('sk-ant-')) {
-      localStorage.setItem('mz_key_vfinal', apiKey);
-      document.getElementById('setup').classList.add('hidden');
-      document.getElementById('chat').classList.remove('hidden');
-      document.getElementById('input').classList.remove('hidden');
-      addMsg('bot', 'שלום! כאן העוזר של <strong>Men Zone</strong>. איך אפשר לעזור?');
-    }
-  }
-  window.onload = () => { const s = localStorage.getItem('mz_key_vfinal'); if(s) { document.getElementById('key').value = s; start(); } };
+  let history = [];
   function addMsg(role, text) {
     const d = document.getElementById('chat'); const m = document.createElement('div'); m.className = 'msg ' + role;
     m.innerHTML = text.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank">$1</a>').replace(/\n/g, '<br>');
     d.appendChild(m); d.scrollTop = d.scrollHeight;
   }
+  window.onload = () => addMsg('bot', 'שלום! כאן העוזר של <strong>Men Zone</strong>. איך אפשר לעזור?');
+
   async function send() {
     const i = document.getElementById('userInput'); const btn = document.getElementById('sendBtn'); const t = i.value.trim(); if(!t || btn.disabled) return;
     i.value = ''; addMsg('user', t); history.push({role:'user', content:t});
     btn.disabled = true; document.getElementById('error-msg').classList.add('hidden');
     try {
-      const r = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
-        body: JSON.stringify({ model: 'claude-3-haiku-20240307', max_tokens: 512, system: SYSTEM, messages: history })
+      const r = await fetch('/api/chat', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: history })
       });
-      const data = await r.json(); if(data.error) throw new Error(data.error.message);
+      const data = await r.json(); if(data.error) throw new Error(data.error);
       const reply = data.content[0].text; addMsg('bot', reply); history.push({role:'assistant', content:reply});
     } catch(e) { document.getElementById('error-msg').innerText = 'שגיאה: ' + e.message; document.getElementById('error-msg').classList.remove('hidden'); }
     finally { btn.disabled = false; }
