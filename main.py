@@ -1,6 +1,8 @@
 import os
 import json
 import requests
+import threading
+import time
 from flask import Flask, request, jsonify
 from google import genai
 
@@ -41,8 +43,22 @@ SYSTEM_INSTRUCTIONS = """אתה עוזר וירטואלי של 'Men Zone' - קל
 סגנון מענה: קצר, ישיר, ענייני, בגובה העיניים. ללא נימוסים מיותרים.
 אל תבטיח תוצאות מהטיפול הראשון."""
 
+def keep_alive():
+    """מונע שינה של השרת"""
+    while True:
+        time.sleep(840)  # כל 14 דקות
+        try:
+            url = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "")
+            if url:
+                requests.get(f"https://{url}/")
+        except:
+            pass
+
+# הפעל keep-alive ב-background
+t = threading.Thread(target=keep_alive, daemon=True)
+t.start()
+
 def send_whatsapp_message(to, message):
-    """שולח הודעה חזרה דרך WhatsApp API"""
     url = f"https://graph.facebook.com/v18.0/{PHONE_NUMBER_ID}/messages"
     headers = {
         "Authorization": f"Bearer {WHATSAPP_TOKEN}",
@@ -58,7 +74,6 @@ def send_whatsapp_message(to, message):
     return response.json()
 
 def get_gemini_response(user_message):
-    """מקבל תשובה מ-Gemini"""
     response = client.models.generate_content(
         model="gemini-2.0-flash",
         config={"system_instruction": SYSTEM_INSTRUCTIONS},
@@ -68,46 +83,29 @@ def get_gemini_response(user_message):
 
 @app.route("/webhook", methods=["GET"])
 def verify_webhook():
-    """אימות ה-Webhook מול Meta"""
     mode = request.args.get("hub.mode")
     token = request.args.get("hub.verify_token")
     challenge = request.args.get("hub.challenge")
-
     if mode == "subscribe" and token == VERIFY_TOKEN:
-        print("Webhook verified!")
         return challenge, 200
-    else:
-        return "Verification failed", 403
+    return "Verification failed", 403
 
 @app.route("/webhook", methods=["POST"])
 def receive_message():
-    """מקבל הודעות נכנסות מוואטסאפ"""
     data = request.get_json()
-
     try:
         entry = data["entry"][0]
         changes = entry["changes"][0]
         value = changes["value"]
-
         if "messages" in value:
             message = value["messages"][0]
             from_number = message["from"]
-            msg_type = message.get("type", "")
-
-            if msg_type == "text":
+            if message.get("type") == "text":
                 user_text = message["text"]["body"]
-                print(f"הודעה נכנסת מ-{from_number}: {user_text}")
-
-                # קבלת תשובה מ-Gemini
                 bot_reply = get_gemini_response(user_text)
-                print(f"תשובת הבוט: {bot_reply}")
-
-                # שליחת תשובה
                 send_whatsapp_message(from_number, bot_reply)
-
     except Exception as e:
         print(f"שגיאה: {e}")
-
     return jsonify({"status": "ok"}), 200
 
 @app.route("/", methods=["GET"])
